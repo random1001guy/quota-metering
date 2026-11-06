@@ -24,15 +24,25 @@ services:
       interval: 2s
       retries: 30
 
+  seed:
+    build: .
+    command: ["python", "-m", "quota.seed"]
+    environment:
+      DATABASE_URL: postgresql://quota:quota@postgres:5432/quota
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   quota:
     build: .
+    command: ["uvicorn", "quota.app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
     environment:
       DATABASE_URL: postgresql://quota:quota@postgres:5432/quota
       REDIS_URL: redis://redis:6379/0
     ports:
       - "8000:8000"
     depends_on:
-      postgres:
-        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
