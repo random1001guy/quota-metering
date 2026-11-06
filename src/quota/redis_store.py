@@ -1,6 +1,6 @@
 """Redis access: key layout and the Lua scripts that move quota between states.
 
-Every key carries the org as a hash tag ({org}), so all of one org's keys live in the same
+Every key carries the org as a hashtag ({org}), so all of one org's keys live in the same
 Redis Cluster slot and a script may touch several of them atomically.
 
   lease:{org}:<feature>:<period>   hash: balance, reserved, used, granted_total, exhausted
