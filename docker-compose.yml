@@ -1,3 +1,14 @@
+# docker compose up            -> stores, seed, 3 quota instances, 2 dummy-tracking-feature instances, and a
+#                                 load driver printing live stats every 5 s
+# docker compose run --rm verify   -> end-to-end checks against the running stack (PASS/FAIL table)
+x-health: &health
+  interval: 2s
+  retries: 30
+
+x-python-health: &python-health
+  test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+  <<: *health
+
 services:
   postgres:
     image: postgres:17
@@ -11,8 +22,7 @@ services:
       - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U quota -d quota"]
-      interval: 2s
-      retries: 30
+      <<: *health
 
   redis:
     image: redis:7.4
@@ -21,8 +31,7 @@ services:
       - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 2s
-      retries: 30
+      <<: *health
 
   seed:
     build: .
@@ -33,16 +42,62 @@ services:
       postgres:
         condition: service_healthy
 
+  # The quota service. 3 instances behind one DNS name; nothing is counted per instance.
   quota:
     build: .
-    command: ["uvicorn", "quota.app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+    command: ["uvicorn", "quota.app:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
+    deploy:
+      replicas: 3
     environment:
       DATABASE_URL: postgresql://quota:quota@postgres:5432/quota
       REDIS_URL: redis://redis:6379/0
     ports:
-      - "8000:8000"
+      - "8000-8002:8000"
+    healthcheck: *python-health
     depends_on:
       seed:
         condition: service_completed_successfully
       redis:
+        condition: service_healthy
+
+  # Demo product service that consumes quota (container tracking, schedule search).
+  dummy-tracking-feature:
+    build: .
+    command: ["uvicorn", "demo.dummy_tracking_feature:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
+    deploy:
+      replicas: 2
+    environment:
+      QUOTA_URL: http://quota:8000
+      DATABASE_URL: postgresql://quota:quota@postgres:5432/quota
+    ports:
+      - "9000-9001:8000"
+    healthcheck: *python-health
+    depends_on:
+      quota:
+        condition: service_healthy
+
+  # Keeps dummy-tracking-feature under load and prints throughput, outcomes and quota overhead.
+  load-tester-client:
+    build: .
+    command: ["python", "-m", "demo.load_tester_client"]
+    environment:
+      CONSUMER_URL: http://dummy-tracking-feature:8000
+      QUOTA_URL: http://quota:8000
+      RATE: ${LOAD_RATE:-200}
+      ORGS: ${LOAD_ORGS:-100}     # busy subset of the 5,000 seeded orgs: starter orgs run out within ~2 min, so 429s show
+    depends_on:
+      dummy-tracking-feature:
+        condition: service_healthy
+
+  # One-off end-to-end checks: docker compose run --rm verify
+  verify:
+    build: .
+    profiles: ["verify"]
+    command: ["python", "-m", "demo.verify"]
+    environment:
+      CONSUMER_URL: http://dummy-tracking-feature:8000
+      QUOTA_URL: http://quota:8000
+      DATABASE_URL: postgresql://quota:quota@postgres:5432/quota
+    depends_on:
+      dummy-tracking-feature:
         condition: service_healthy
