@@ -14,7 +14,7 @@ One command brings up the whole system and puts it under load:
 | Service | What it is |
 |---|---|
 | `postgres`, `redis` | The stores: Postgres holds plans, orgs and per-period granted totals; Redis holds the live leases |
-| `seed` | One-off: 5,000 placeholder orgs (`org1`..`org5000`), features `feature1`..`feature30`, plans starter/pro/enterprise |
+| `seed` | One-off: creates the schema, then 5,000 placeholder orgs (`org1`..`org5000`), features `feature1`..`feature30`, plans starter/pro/enterprise |
 | `quota` | The quota service, **3 instances** (host ports 8000-8002). Interactive API docs: http://localhost:8000/docs |
 | `dummy-tracking-feature` | A demo product service that consumes quota, **2 instances** (ports 9000-9001): `POST /v1/containers` costs 1 unit (`feature1`) per container, `GET /v1/schedules` costs 1 unit (`feature2`). It reserves, does the work, then commits, or releases if the work failed |
 | `load-tester-client` | Drives dummy-tracking-feature continuously (~200 ops/s over 100 busy orgs, bursty per org, batches of 1-100, 5% downstream failures, 2% duplicate sends) and prints a line every 5 s: throughput, outcomes, and the time spent waiting on the quota service (p50/p99). Every 30 s it checks a sample of orgs against their limits. Tune with `LOAD_RATE` / `LOAD_ORGS` |

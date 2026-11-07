@@ -35,10 +35,19 @@ def seed(conn: psycopg.Connection, n_orgs: int = 5000, n_features: int = 30, rng
                     cp.write_row((i, f"org{i}", plans[i - 1], rng.randint(1, 31)))
 
 
+def ensure_schema(conn: psycopg.Connection, path: str) -> None:
+    """Create the tables on first start (the schema file ships inside the image)."""
+    if conn.execute("SELECT to_regclass('public.orgs')").fetchone()[0] is None:
+        with open(path) as f:
+            conn.execute(f.read())
+        print(f"seed: created schema from {path}")
+
+
 def main() -> None:
     url = os.environ.get("DATABASE_URL", "postgresql://quota:quota@localhost:5432/quota")
     n_orgs = int(os.environ.get("SEED_ORGS", "5000"))
     with psycopg.connect(url, autocommit=True) as conn:
+        ensure_schema(conn, os.environ.get("SCHEMA_PATH", "db/schema.sql"))
         existing = conn.execute("SELECT count(*) FROM orgs").fetchone()[0]
         if existing and "--force" not in sys.argv:
             print(f"seed: {existing} orgs already present, skipping (use --force to reseed)")

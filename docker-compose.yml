@@ -18,8 +18,6 @@ services:
       POSTGRES_USER: quota
       POSTGRES_PASSWORD: quota
       POSTGRES_DB: quota
-    volumes:
-      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
     # No host port by default (avoids clashing with a local Postgres); the pytest suite publishes
     # it through docker-compose.test.yml.
     healthcheck:
@@ -33,6 +31,7 @@ services:
       test: ["CMD", "redis-cli", "ping"]
       <<: *health
 
+  # One-off: creates the schema (db/schema.sql, baked into the image) and seeds placeholder data.
   seed:
     build: .
     command: ["python", "-m", "quota.seed"]
