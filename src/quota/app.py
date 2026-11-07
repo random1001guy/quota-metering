@@ -18,7 +18,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from psycopg_pool import AsyncConnectionPool, PoolTimeout
 from pydantic import BaseModel, Field
-from redis.asyncio import Redis
+from redis.asyncio import BlockingConnectionPool, Redis
 from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import TimeoutError as RedisTimeoutError
 
@@ -72,7 +72,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         pool = AsyncConnectionPool(settings.database_url, min_size=1, max_size=settings.pg_pool_size,
                                    kwargs={"autocommit": True}, open=False)
         await pool.open()
-        redis = Redis.from_url(settings.redis_url, decode_responses=True)
+        # Blocking pool: with every connection busy a call WAITS (up to 1 s) for one, instead of
+        # redis-py's default pool, which raises MaxConnectionsError at once past 100 in flight.
+        redis = Redis(connection_pool=BlockingConnectionPool.from_url(
+            settings.redis_url, max_connections=settings.redis_pool_size, timeout=1,
+            decode_responses=True))
         svc = QuotaService(settings, PgStore(pool), RedisStore(redis, settings.idempotency_window_s))
         await svc.start()
         app.state.svc = svc

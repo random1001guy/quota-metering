@@ -12,6 +12,7 @@ class Settings:
     database_url: str = _env("DATABASE_URL", "postgresql://quota:quota@localhost:5432/quota")
     redis_url: str = _env("REDIS_URL", "redis://localhost:6379/0")
     pg_pool_size: int = field(default_factory=lambda: int(os.environ.get("PG_POOL_SIZE", "10")))
+    redis_pool_size: int = field(default_factory=lambda: int(os.environ.get("REDIS_POOL_SIZE", "64")))
     # How long a reservation may stay open before its units are reclaimed. Must be longer than
     # the downstream operation's own timeout.
     reserve_timeout_s: int = field(default_factory=lambda: int(os.environ.get("RESERVE_TIMEOUT_S", "30")))
