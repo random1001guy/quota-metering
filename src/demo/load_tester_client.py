@@ -142,7 +142,7 @@ async def checker(quota: httpx.AsyncClient, touched: list[int]) -> None:
 
 
 async def main() -> None:
-    limits = httpx.Limits(max_connections=400, max_keepalive_connections=400)
+    limits = httpx.Limits(max_connections=400, max_keepalive_connections=400, keepalive_expiry=10)
     async with httpx.AsyncClient(base_url=CONSUMER_URL, timeout=10, limits=limits) as http, \
             httpx.AsyncClient(base_url=QUOTA_URL, timeout=10) as quota:
         print(f"[load-tester-client] driving {CONSUMER_URL} at ~{RATE:.0f} ops/s over {ORGS} orgs "

@@ -55,8 +55,10 @@ class QuotaClient:
                  max_connections: int = 200):
         self.http = httpx.AsyncClient(
             base_url=base_url, timeout=timeout_s,
+            # idle connections are dropped well before the server's 30 s keep-alive timeout, so a
+            # request never goes out on a connection the server is closing at that moment
             limits=httpx.Limits(max_connections=max_connections,
-                                max_keepalive_connections=max_connections))
+                                max_keepalive_connections=max_connections, keepalive_expiry=10))
         self.retries = retries
 
     async def aclose(self) -> None:

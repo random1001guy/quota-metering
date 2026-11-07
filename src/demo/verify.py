@@ -35,6 +35,7 @@ class Verify:
         self.http, self.quota, self.db = http, quota, db
         self.rows: list[tuple[str, bool, str]] = []
         self.next_org = 0
+        self.resends = 0   # requests re-sent with the same key after a lost reply
 
     # ---- plumbing ------------------------------------------------------------------------
 
@@ -61,13 +62,33 @@ class Verify:
         self.next_org += 1
         return self.next_org - 1
 
+    async def send(self, method: str, url: str, key: str | None, **kw) -> httpx.Response:
+        """Send like a well-behaved client: if the reply is lost (connection dropped), send again
+        with the SAME Idempotency-Key. The first attempt may have done the work; the retry then
+        gets the original outcome back (200 replayed) instead of doing it twice. A retry that
+        finds the first attempt still running (409 in progress) waits and asks again."""
+        headers = {"Idempotency-Key": key or uuid.uuid4().hex}
+        lost = False
+        for attempt in range(8):
+            try:
+                r = await self.http.request(method, url, headers=headers, **kw)
+            except httpx.TransportError:
+                self.resends += 1
+                lost = True
+                await asyncio.sleep(0.05 * (attempt + 1))
+                continue
+            if lost and r.status_code == 409 and "in progress" in r.json().get("detail", ""):
+                await asyncio.sleep(0.05 * (attempt + 1))
+                continue
+            return r
+        raise RuntimeError(f"{method} {url}: no answer after 8 attempts")
+
     async def track(self, org: int, n: int, key: str | None = None, fail: bool = False) -> httpx.Response:
-        return await self.http.post("/v1/containers", headers={"Idempotency-Key": key or uuid.uuid4().hex},
-                                    json={"org_id": org, "containers": [f"C{i}" for i in range(n)], "fail": fail})
+        return await self.send("POST", "/v1/containers", key,
+                               json={"org_id": org, "containers": [f"C{i}" for i in range(n)], "fail": fail})
 
     async def search(self, org: int, key: str | None = None, fail: bool = False) -> httpx.Response:
-        return await self.http.get("/v1/schedules", params={"org_id": org, "fail": fail},
-                                   headers={"Idempotency-Key": key or uuid.uuid4().hex})
+        return await self.send("GET", "/v1/schedules", key, params={"org_id": org, "fail": fail})
 
     async def usage(self, org: int, feature: str = CONTAINERS) -> dict:
         return (await self.quota.get(f"/v1/usage/{org}/{feature}")).json()
@@ -165,11 +186,12 @@ class Verify:
         racing = await asyncio.gather(*(self.track(org, 5, key=k) for k in keys for _ in range(3)))
         later = await asyncio.gather(*(self.track(org, 5, key=k) for k in keys))
         u, (led, rows) = await self.usage(org), await self.ledger(org)
-        firsts = sum(1 for r in racing if r.status_code == 200 and not r.json().get("replayed"))
+        # every key must end up done (a 200, original or replayed); used = 250 proves it was once each
+        firsts = len({k for k, r in zip((k for k in keys for _ in range(3)), racing) if r.status_code == 200})
         replays = all(r.status_code == 200 and r.json().get("replayed") for r in later)
         self.check("retries: 50 operations x 3 racing sends, then each sent again",
                    firsts == 50 and replays and u["used"] == 250 and led == 250 and rows == 50,
-                   f"racing sends {self.codes(racing)} ({firsts} did the work), later resends all replayed: "
+                   f"racing sends {self.codes(racing)} ({firsts}/50 operations done), later resends all replayed: "
                    f"{replays}; used {u['used']} (expected 250), ledger rows {rows}")
 
         k = uuid.uuid4().hex
@@ -185,6 +207,7 @@ class Verify:
         while; then every (org, feature) must reconcile exactly."""
         orgs = [self.org() for _ in range(n_orgs)]
         seen: dict[tuple[int, str], int] = defaultdict(int)
+        counted: set[str] = set()   # each operation (key) counts once, however many replies say 200
         codes: dict[int, int] = defaultdict(int)
         ops = 0
         stop = time.perf_counter() + MIXED_S
@@ -201,7 +224,8 @@ class Verify:
             rs = await asyncio.gather(*(send() for _ in range(2 if random.random() < 0.05 else 1)))
             for r in rs:
                 codes[r.status_code] += 1
-                if r.status_code == 200 and not r.json().get("replayed"):
+                if r.status_code == 200 and key not in counted:
+                    counted.add(key)
                     seen[(org, feature)] += n
             ops += 1
 
@@ -233,7 +257,7 @@ class Verify:
 
 
 async def main() -> int:
-    limits = httpx.Limits(max_connections=300, max_keepalive_connections=300)
+    limits = httpx.Limits(max_connections=300, max_keepalive_connections=300, keepalive_expiry=10)
     async with httpx.AsyncClient(base_url=CONSUMER_URL, timeout=30, limits=limits) as http, \
             httpx.AsyncClient(base_url=QUOTA_URL, timeout=10) as quota:
         db = await psycopg.AsyncConnection.connect(DATABASE_URL, autocommit=True)
@@ -246,7 +270,8 @@ async def main() -> int:
             await scenario()
         await db.close()
     failed = [r for r in v.rows if not r[1]]
-    print(f"\nverify: {len(v.rows) - len(failed)}/{len(v.rows)} checks passed", flush=True)
+    note = f" ({v.resends} replies were lost and re-sent with the same key)" if v.resends else ""
+    print(f"\nverify: {len(v.rows) - len(failed)}/{len(v.rows)} checks passed{note}", flush=True)
     return 1 if failed else 0
 
 

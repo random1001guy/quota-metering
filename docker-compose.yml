@@ -44,7 +44,8 @@ services:
   # The quota service. 3 instances behind one DNS name; nothing is counted per instance.
   quota:
     build: .
-    command: ["uvicorn", "quota.app:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
+    command: ["uvicorn", "quota.app:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log",
+              "--timeout-keep-alive", "30"]
     deploy:
       replicas: 3
     environment:
@@ -62,7 +63,8 @@ services:
   # Demo product service that consumes quota (container tracking, schedule search).
   dummy-tracking-feature:
     build: .
-    command: ["uvicorn", "demo.dummy_tracking_feature:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
+    command: ["uvicorn", "demo.dummy_tracking_feature:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log",
+              "--timeout-keep-alive", "30"]
     deploy:
       replicas: 2
     environment:
