@@ -59,10 +59,12 @@ The caller makes one `request_id` per operation and reuses it on every retry.
 
 ## Tests
 
-Unit tests need nothing running; integration and concurrency tests use the compose Postgres
-and Redis (`docker compose up -d`), in a separate `quota_test` database and Redis DB 15.
+Unit tests need nothing running. Integration and concurrency tests use the compose Postgres
+and Redis (in a separate `quota_test` database and Redis DB 15), which must be published on the
+host ports 5432 / 6379 for this:
 
 ```bash
+docker compose -f docker-compose.yml -f docker-compose.test.yml up -d postgres redis
 python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'
 .venv/bin/pytest tests/unit          # pure logic: billing periods, lease sizing
 .venv/bin/pytest                     # unit + integration (real Redis/Postgres, one caller)

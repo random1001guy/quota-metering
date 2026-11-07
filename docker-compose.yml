@@ -1,6 +1,8 @@
 # docker compose up            -> stores, seed, 3 quota instances, 2 dummy-tracking-feature instances, and a
 #                                 load driver printing live stats every 5 s
 # docker compose run --rm verify   -> end-to-end checks against the running stack (PASS/FAIL table)
+# Host ports: quota 8000-8002, dummy-tracking-feature 9000-9001. Postgres/Redis stay internal
+# unless docker-compose.test.yml is added (needed only for running pytest from the host).
 x-health: &health
   interval: 2s
   retries: 30
@@ -18,8 +20,8 @@ services:
       POSTGRES_DB: quota
     volumes:
       - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
-    ports:
-      - "5432:5432"
+    # No host port by default (avoids clashing with a local Postgres); the pytest suite publishes
+    # it through docker-compose.test.yml.
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U quota -d quota"]
       <<: *health
@@ -27,8 +29,6 @@ services:
   redis:
     image: redis:7.4
     command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
-    ports:
-      - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       <<: *health
