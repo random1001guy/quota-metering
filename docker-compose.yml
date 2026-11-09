@@ -1,8 +1,13 @@
-# docker compose up            -> stores, seed, 3 quota instances, 2 dummy-tracking-feature instances, and a
-#                                 load driver printing live stats every 5 s
-# docker compose run --rm verify   -> end-to-end checks against the running stack (PASS/FAIL table)
+# docker compose up   -> stores, seed, 3 quota instances, 2 dummy-tracking-feature instances, and
+#                        load-tester-client: it runs the correctness checks (PASS/FAIL per test), then
+#                        keeps ~2,000 ops/s of load going, printing live stats every 5 s
+# docker compose run --rm load-tester-client check 2 --requests 2000 --limit 300   -> one test, own numbers
 # Host ports: quota 8000-8002, dummy-tracking-feature 9000-9001. Postgres/Redis stay internal
 # unless docker-compose.test.yml is added (needed only for running pytest from the host).
+# Reservation timeout: 10 s for this demo (service default 30 s) so the crashed-client check
+# doesn't wait long. The checks need the same value, hence one anchor for both services.
+x-reserve-timeout: &reserve-timeout "10"
+
 x-health: &health
   interval: 2s
   retries: 30
@@ -51,6 +56,7 @@ services:
     environment:
       DATABASE_URL: postgresql://quota:quota@postgres:5432/quota
       REDIS_URL: redis://redis:6379/0
+      RESERVE_TIMEOUT_S: *reserve-timeout
     ports:
       - "8000-8002:8000"
     healthcheck: *python-health
@@ -77,28 +83,20 @@ services:
       quota:
         condition: service_healthy
 
-  # Keeps dummy-tracking-feature under load and prints throughput, outcomes and quota overhead.
+  # Runs the correctness checks once, then keeps dummy-tracking-feature under sustained load,
+  # printing throughput, outcomes and quota overhead every 5 s.
   load-tester-client:
     build: .
-    command: ["python", "-m", "demo.load_tester_client"]
-    environment:
-      CONSUMER_URL: http://dummy-tracking-feature:8000
-      QUOTA_URL: http://quota:8000
-      RATE: ${LOAD_RATE:-200}
-      ORGS: ${LOAD_ORGS:-100}     # busy subset of the 5,000 seeded orgs: starter orgs run out within ~2 min, so 429s show
-    depends_on:
-      dummy-tracking-feature:
-        condition: service_healthy
-
-  # One-off end-to-end checks: docker compose run --rm verify
-  verify:
-    build: .
-    profiles: ["verify"]
-    command: ["python", "-m", "demo.verify"]
+    # entrypoint (not command), so `docker compose run --rm load-tester-client check 2 ...` passes
+    # its arguments to the program
+    entrypoint: ["python", "-m", "demo.load_tester_client"]
     environment:
       CONSUMER_URL: http://dummy-tracking-feature:8000
       QUOTA_URL: http://quota:8000
       DATABASE_URL: postgresql://quota:quota@postgres:5432/quota
+      RESERVE_TIMEOUT_S: *reserve-timeout
+      RATE: ${LOAD_RATE:-2000}    # ops/s (the brief's sustained rate)
+      ORGS: ${LOAD_ORGS:-1000}    # orgs 1..ORGS of the 5,000 seeded: starter orgs run out within minutes, so 429s show
     depends_on:
       dummy-tracking-feature:
         condition: service_healthy

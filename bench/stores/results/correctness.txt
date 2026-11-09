@@ -1,0 +1,27 @@
+[pg] A: 2,400 x 1 unit vs 500 left: sends=4800 ok=500 rejected=3800 dup=500 used=500/500 -> PASS
+    ok  never over limit (used <= limit)
+    ok  clients told ok == counter (ok_sum == used)
+    ok  stored charge records == counter
+    ok  each request_id charged at most once
+    ok  every rejection truly did not fit
+    ok  exactly 500 accepted, 0 remaining
+[pg] B: 800 x 1-50 units vs 500 left: sends=1600 ok=17 rejected=1566 dup=17 used=500/500 -> PASS
+    ok  never over limit (used <= limit)
+    ok  clients told ok == counter (ok_sum == used)
+    ok  stored charge records == counter
+    ok  each request_id charged at most once
+    ok  every rejection truly did not fit
+[redis] A: 2,400 x 1 unit vs 500 left: sends=4800 ok=500 rejected=3800 dup=500 used=500/500 -> PASS
+    ok  never over limit (used <= limit)
+    ok  clients told ok == counter (ok_sum == used)
+    ok  stored charge records == counter
+    ok  each request_id charged at most once
+    ok  every rejection truly did not fit
+    ok  exactly 500 accepted, 0 remaining
+[redis] B: 800 x 1-50 units vs 500 left: sends=1600 ok=23 rejected=1554 dup=23 used=500/500 -> PASS
+    ok  never over limit (used <= limit)
+    ok  clients told ok == counter (ok_sum == used)
+    ok  stored charge records == counter
+    ok  each request_id charged at most once
+    ok  every rejection truly did not fit
+ALL PASS

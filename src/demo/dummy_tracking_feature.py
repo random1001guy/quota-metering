@@ -8,7 +8,7 @@ releases if the work failed. Clients send an Idempotency-Key header and reuse it
 `fail=true` makes the downstream work fail, so failure handling can be exercised on purpose.
 
 Every committed operation is also written to this service's own ledger (demo_ledger), which
-the verify step reconciles against the quota service's usage numbers.
+the correctness checks reconcile against the quota service's usage numbers.
 """
 import asyncio
 import logging
