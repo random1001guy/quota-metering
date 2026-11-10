@@ -166,7 +166,7 @@ def usage_line(u: dict) -> str:
 # ---- the tests -------------------------------------------------------------------------------
 
 @test(1, lambda p: f"Exact fill: {p['batches']} concurrent batches of {p['size']} units against a limit "
-                   f"of {p['batches'] * p['size']} (the brief's case: work totalling exactly what is left)",
+                   f"of {p['batches'] * p['size']}",
       batches=(50, "number of concurrent batches"), size=(10, "units per batch (limit = batches x size)"))
 async def exact_fill(c: Ctx, batches: int, size: int) -> Result:
     limit = batches * size
@@ -179,7 +179,7 @@ async def exact_fill(c: Ctx, batches: int, size: int) -> Result:
 
 
 @test(2, lambda p: f"Oversubscribed: {p['requests']} concurrent 1-unit requests against a limit of "
-                   f"{p['limit']} (exactly {min(p['requests'], p['limit'])} may succeed)",
+                   f"{p['limit']}",
       requests=(1000, "concurrent 1-unit requests"), limit=(500, "the org's limit"))
 async def oversubscribe_units(c: Ctx, requests: int, limit: int) -> Result:
     [org] = await c.orgs(1, limit)
